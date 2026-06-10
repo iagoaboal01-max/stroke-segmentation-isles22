@@ -92,6 +92,8 @@ The model is a **3D U-Net** with two input channels, one for DWI and one for ADC
 | Parameters     | Approximately 90.3 million |
 | Main script    | `train_cluster_adamw.py`   |
 
+The trained model weights (`model_final.pt`) are not included in this repository because of file size limitations. The repository contains the training code, configuration files, evaluation outputs, and figures needed to understand and reproduce the experiment.
+
 ---
 
 ## Training configuration
@@ -295,6 +297,8 @@ Each row should correspond to one patient.
 ---
 
 ### 4. Train the model
+
+Pre-trained weights are not provided in this repository. Running the training script will generate new model weights in the selected output directory.
 
 Example command:
 
