@@ -1,328 +1,337 @@
-# stroke-segmentation-isles22
+# Stregmentation
 
-3D U-Net probabilistic stroke lesion segmentation from DWI + ADC MRI (ISLES 2022)
+### Probabilistic ischemic stroke lesion localisation from DWI + ADC MRI
 
-\*\*Biomedical Engineering — Universitat Pompeu Fabra, 2026\*\*  
-
+**Biomedical Engineering — Universitat Pompeu Fabra, 2026**
 Iago Aboal · Arnau Raya · Arnau Sanfeliu
 
+---
 
+## Project overview
 
-\---
+This project trains a **3D U-Net** to identify ischemic stroke lesions in brain MRI using two input sequences:
 
+* **DWI**: highlights restricted diffusion, commonly used in acute ischemic stroke.
+* **ADC**: helps confirm diffusion restriction and reduce ambiguity.
 
+The model does not only generate a binary segmentation mask. Its main output is a **voxel-wise probability heatmap**, where each voxel receives a value between 0 and 1 indicating how likely it is to belong to ischemic tissue.
 
-\## What this project does
+A binary mask is obtained afterwards by applying a threshold of **0.5**, but this mask is considered a secondary output.
 
+The goal of the project is therefore **lesion localisation**, not perfect manual-style segmentation.
 
+---
 
-We train a 3D U-Net on the \[ISLES 2022](https://isles22.grand-challenge.org/) dataset to generate a \*\*voxel-wise probability heatmap\*\* of likely ischemic tissue from two MRI sequences routinely acquired in acute stroke: DWI and ADC.
+## Why a probability map?
 
+In acute care, a single automatic binary mask can be misleading because it hides uncertainty. This is especially risky for small, subtle, or ambiguous lesions.
 
+A probability heatmap is more informative because it shows:
 
-The intended output is not a binary answer. It is a graded probability map — one value per voxel — that highlights candidate ischemic regions while keeping uncertainty visible. A thresholded binary mask (τ = 0.5) is derived from it as a secondary product.
+* where the model is confident,
+* where the model is uncertain,
+* and which regions should be reviewed more carefully.
 
+This project should be understood as a **technology study**, not as a clinical validation study. We evaluate whether the model can localise lesions accurately and quickly enough to justify further testing. We do **not** claim that it improves clinical decisions or accelerates the diagnostic workflow.
 
+---
 
-\*\*This is a technology study, not a clinical trial.\*\* We measure whether the map is accurate and fast enough to be worth testing in a clinical workflow. We do not test whether it actually helps clinicians.
+## Pipeline
 
-
-
-\---
-
-
-
-\## Pipeline
-
-
-
+```text
+DWI + ADC MRI
+     │
+     ▼
+Pre-processing
+- resize each slice to 128 × 128
+- pad or crop the depth to 80 slices
+- normalise each modality to [0, 1]
+     │
+     ▼
+3D U-Net
+     │
+     ▼
+Sigmoid output
+     │
+     ├──► Probability heatmap
+     │
+     └──► Threshold at 0.5 → Binary mask
 ```
 
-DWI volume  ┐
+---
 
-&#x20;           ├──► Pre-processing ──► 3D U-Net ──► Sigmoid ──► Probability heatmap
+## Dataset
 
-ADC volume  ┘    (resize H×W,              (90.3M params)       │
+| Property         | Value                                 |
+| ---------------- | ------------------------------------- |
+| Dataset          | ISLES 2022                            |
+| Cases            | 250 multi-centre MRI cases            |
+| Inputs           | DWI + ADC                             |
+| Target           | Expert binary lesion mask             |
+| Split            | 70% train / 15% validation / 15% test |
+| Random seed      | 67                                    |
+| Final input size | 80 × 128 × 128                        |
 
-&#x20;                 pad/crop D→80,                                 └──► Threshold 0.5 ──► Binary mask
+The ISLES 2022 data are not included in this repository. They can be downloaded from the official ISLES 2022 release:
 
-&#x20;                 min-max norm)
+* ISLES 2022 challenge: https://isles22.grand-challenge.org/
+* Zenodo dataset: https://doi.org/10.5281/zenodo.7153326
 
-```
+---
 
+## Model
 
+The model is a **3D U-Net** with two input channels, one for DWI and one for ADC.
 
-\---
+| Component      | Description                |
+| -------------- | -------------------------- |
+| Architecture   | 3D U-Net                   |
+| Input channels | 2                          |
+| Output         | 1-channel probability map  |
+| Activation     | Sigmoid                    |
+| Parameters     | Approximately 90.3 million |
+| Main script    | `train_cluster_adamw.py`   |
 
+---
 
+## Training configuration
 
-\## Dataset
+| Hyperparameter        | Value                                |
+| --------------------- | ------------------------------------ |
+| Optimizer             | AdamW                                |
+| Learning rate         | 1 × 10⁻⁴                             |
+| Weight decay          | 5 × 10⁻⁵                             |
+| LR schedule           | CosineAnnealingLR                    |
+| Loss function         | 0.5 Dice loss + 0.5 Focal loss       |
+| Focal loss parameters | α = 0.75, γ = 2                      |
+| Epochs                | 100                                  |
+| Batch size            | 2                                    |
+| Seed                  | 67                                   |
+| Hardware              | Single NVIDIA GPU on a SLURM cluster |
+| Training time         | Approximately 34 minutes             |
 
+The combined Dice + Focal loss was used because ischemic lesions occupy only a very small fraction of the brain volume. Dice loss helps optimise lesion overlap, while Focal loss reduces the influence of easy background voxels and focuses learning on harder lesion regions.
 
+---
 
-| Property | Value |
+## Results
 
-|---|---|
+The model was evaluated on a held-out test set of **38 cases**.
 
-| Source | \[ISLES 2022](https://doi.org/10.1038/s41597-022-01875-5) — publicly released training partition |
+### Threshold-free heatmap quality
 
-| Cases | 250 multi-centre MRI cases |
-
-| Input channels | DWI (b≈1000) + ADC map |
-
-| Target | Expert binary lesion mask |
-
-| Split | 70 / 15 / 15 % — train / val / test (seed 67) |
-
-| Input size | 80 × 128 × 128 (D × H × W) |
-
-
-
-The data are not included in this repository. Download from \[Zenodo](https://doi.org/10.5281/zenodo.7153326).
-
-
-
-\---
-
-
-
-\## Results (test set, 38 cases)
-
-
-
-\### Heatmap quality (threshold-free)
-
-
-
-| Metric | Value |
-
-|---|---|
-
+| Metric  | Value |
+| ------- | ----- |
 | ROC-AUC | 0.936 |
+| PR-AUC  | 0.827 |
 
-| PR-AUC | 0.827 |
+These metrics evaluate the probability heatmap before converting it into a binary mask.
 
+---
 
+### Voxel-level segmentation performance
 
-\### Voxel overlap (mask, τ = 0.5)
+The binary mask was obtained by thresholding the probability map at **0.5**.
 
-
-
-| Metric | Value |
-
-|---|---|
-
-| Global (pooled) Dice | 0.808 |
-
+| Metric                | Value |
+| --------------------- | ----- |
+| Global Dice           | 0.808 |
 | Per-patient mean Dice | 0.670 |
+| Voxel precision       | 0.862 |
+| Voxel recall          | 0.761 |
 
-| Voxel precision | 0.862 |
+The difference between global Dice and per-patient mean Dice is important. Global Dice is more influenced by large lesions because they contribute more voxels. Per-patient Dice gives the same weight to every patient and therefore reveals failures in smaller or more difficult cases.
 
-| Voxel recall | 0.761 |
+---
 
+### Lesion-wise detection
 
-
-> The gap between pooled Dice (0.808) and per-patient mean Dice (0.670) is itself a result: the pooled metric is dominated by large lesions, while the per-patient mean weights every case equally and exposes small-lesion failures.
-
-
-
-\### Lesion-wise detection
-
-
-
-| Metric | Value |
-
-|---|---|
-
-| Lesion-wise precision | 1.000 |
-
-| Lesion-wise recall | 0.383 |
-
-| Mean centroid distance | 3.4 voxels |
-
+| Metric                   | Value      |
+| ------------------------ | ---------- |
+| Lesion-wise precision    | 1.000      |
+| Lesion-wise recall       | 0.383      |
+| Mean centroid distance   | 3.4 voxels |
 | Median centroid distance | 0.8 voxels |
 
+Lesion-wise recall is the most informative metric here. It shows that the model often misses small lesions. This is one of the main limitations of the current version.
 
+Lesion-wise precision should be interpreted with caution. The evaluation uses a large matching radius and merges predicted fragments close to the same true lesion. This can artificially reduce the number of false positives and make precision appear higher than it really is.
 
->Lesion-wise precision of 1.0 is an artefact of the matching algorithm (50-voxel radius + fragment merging absorbs nearby predicted blobs into matched lesions rather than counting them as false positives). It should be read as optimistic, not as evidence of perfect spatial precision. Visual inspection confirms over-segmentation in several cases.
+---
 
+## What we can claim
 
+This project supports the following claim:
 
-\## Known limitations
+> The model can generate a fast probability heatmap that often localises the main ischemic lesion region.
 
+This is supported by:
 
+* good global voxel overlap,
+* high ROC-AUC and PR-AUC,
+* low centroid distance in matched lesions,
+* and fast inference.
 
-\*\*Depth crop (pre-processing bug).\*\* H and W are resized by interpolation to 128×128, but the depth axis is handled by zero-padding shorter volumes and \*\*hard-cropping\*\* volumes deeper than 80 slices (`\[:, :, :80, :, :]`). Scans acquired with thin slices (\~2 mm) can exceed 80 slices and have their superior/inferior extent silently discarded — including any lesion tissue in those slices. A correct implementation would resize (not crop) the depth axis. This is a fixable engineering error and is the most likely explanation for `sub-strokecase0140` (large lesion, low Dice).
+---
 
+## What we cannot claim
 
+This project does **not** prove that the model:
 
-\*\*Small lesion detection.\*\* Lesion-wise recall is 0.38 and decreases with lesion size. Punctiform embolic infarcts (<200 voxels) are frequently missed. This is a known difficulty in the ISLES 2022 dataset and in medical image segmentation generally.
+* detects all ischemic lesions,
+* performs well on very small lesions,
+* produces formally calibrated probabilities,
+* improves clinical decision-making,
+* or accelerates the diagnostic workflow.
 
+These claims would require additional clinical validation.
 
+---
 
-\*\*Lesion-wise precision metric.\*\* As noted above, the matching radius + fragment merging produces an inflated precision value. A stricter IoU-based matching would give a more honest estimate.
+## Main limitations
 
+### 1. Depth cropping during pre-processing
 
+Each scan was converted to a fixed size of **80 × 128 × 128**. Height and width were resized to 128 × 128, but the depth axis was handled by padding or cropping.
 
-\*\*No formal probability calibration.\*\* The sigmoid output is interpreted as a probability, but calibration (reliability diagrams, ECE) was not measured. Miscalibrated confidence values would reduce clinical interpretability.
+This means that scans with more than 80 slices were cropped. In some cases, this may remove superior or inferior slices that contain lesion tissue.
 
+This is a relevant pre-processing limitation and may explain some low-Dice cases, especially when the lesion is large or located in cropped regions.
 
+A better approach would be to resize the depth axis or choose a larger target depth based on the distribution of scan sizes.
 
-\---
+---
 
+### 2. Small lesion detection
 
+Small ischemic lesions are difficult to detect because they occupy very few voxels compared with the full brain volume.
 
-\## Training configuration
+In this project, lesion-wise recall was limited, especially for small lesions. This means that the model can miss punctiform or scattered infarcts.
 
+---
 
+### 3. Lesion-wise precision is optimistic
 
-| Hyperparameter | Value |
+The lesion-wise precision value of 1.0 should not be interpreted as perfect spatial precision.
 
-|---|---|
+Because of the matching strategy, predicted blobs near a true lesion can be absorbed into the same matched lesion instead of being counted as false positives. Visual inspection still shows some over-segmentation and spurious predicted regions.
 
-| Optimizer | AdamW |
+---
 
-| Learning rate | 1 × 10⁻⁴ |
+### 4. No formal calibration analysis
 
-| Weight decay | 5 × 10⁻⁵ |
+The sigmoid output is interpreted as a probability map, but formal calibration was not assessed. Reliability diagrams or Expected Calibration Error would be needed to evaluate whether predicted probabilities are numerically well calibrated.
 
-| LR schedule | CosineAnnealingLR (η\_min = lr × 0.01) |
+---
 
-| Loss | 0.5 × Dice + 0.5 × Focal (α=0.75, γ=2) |
+## Repository structure
 
-| Epochs | 100 |
-
-| Batch size | 2 |
-
-| GPU | 1 × NVIDIA (SLURM cluster) |
-
-| Training time | \~34 min (15:39 → 16:13, May 31 2026) |
-
-| Seed | 67 |
-
-
-
-\---
-
-
-
-\## Repository structure
-
-
-
-```
-
+```text
 stregmentation/
-
-├── Dataset.py               # Dataset classes (Dataset\_v1, Dataset\_combined)
-
-├── UNet\_classes.py          # 3D U-Net architecture
-
-├── Model\_acts.py            # Training loop, evaluation, lesion-wise metrics
-
-├── train\_cluster\_adamw.py   # Main training script (cluster / CLI)
-
-├── train\_adamw\_job.sh       # SLURM job submission script
-
+├── README.md
 ├── requirements.txt
-
+├── Dataset.py
+├── UNet_classes.py
+├── Model_acts.py
+├── train_cluster_adamw.py
+├── train_adamw_job.sh
 ├── results/
-
-│   ├── args.json            # Exact hyperparameters used
-
-│   ├── test\_results.json    # Test set metrics
-
-│   ├── summary\_stats.json   
-
-│   ├── history.json         # Per-epoch train/val loss curves
-
-│   ├── per\_patient\_results.csv
-
-│   ├── train\_idx.npy        # Reproducibility: exact split indices
-
-│   ├── val\_idx.npy
-
-│   ├── test\_idx.npy
-
+│   ├── args.json
+│   ├── test_results.json
+│   ├── summary_stats.json
+│   ├── history.json
+│   ├── per_patient_results.csv
+│   ├── train_idx.npy
+│   ├── val_idx.npy
+│   ├── test_idx.npy
 │   └── figures/
-
-└── README.md
-
+└── .gitignore
 ```
 
+---
 
+## How to run
 
-\---
-
-
-
-\## How to run
-
-
-
-\*\*1. Install dependencies\*\*
+### 1. Install dependencies
 
 ```bash
+pip install -r requirements.txt
+```
 
+Alternatively:
+
+```bash
 pip install torch nibabel numpy pandas scikit-learn scipy tqdm
-
 ```
 
+---
 
+### 2. Download the dataset
 
-\*\*2. Prepare the data\*\*  
+Download ISLES 2022 from Zenodo:
 
-Download ISLES 2022 from \[Zenodo](https://doi.org/10.5281/zenodo.7153326) and create a CSV with columns `dwi\_path`, `adc\_path`, `mask\_path` pointing to the NIfTI files.
+```text
+https://doi.org/10.5281/zenodo.7153326
+```
 
+The dataset is not included in this repository.
 
+---
 
-\*\*3. Train\*\*
+### 3. Prepare the input paths
+
+Create a CSV file containing the paths to the images and masks.
+
+The CSV should include at least the following columns:
+
+```text
+dwi_path
+adc_path
+mask_path
+```
+
+Each row should correspond to one patient.
+
+---
+
+### 4. Train the model
+
+Example command:
 
 ```bash
-
-python train\_cluster\_adamw.py \\
-
-&#x20; --base\_path /path/to/ISLES-2022/ \\
-
-&#x20; --csv paths\_isles\_2022.csv \\
-
-&#x20; --modalities dwi\_path adc\_path \\
-
-&#x20; --image\_size 80 128 128 \\
-
-&#x20; --features 64 128 256 512 \\
-
-&#x20; --epochs 100 \\
-
-&#x20; --batch\_size 2 \\
-
-&#x20; --lr 1e-4 \\
-
-&#x20; --weight\_decay 5e-5 \\
-
-&#x20; --output\_dir ./runs/experiment\_1 \\
-
-&#x20; --seed 67
-
+python train_cluster_adamw.py \
+  --base_path /path/to/ISLES-2022/ \
+  --csv paths_isles_2022.csv \
+  --modalities dwi_path adc_path \
+  --image_size 80 128 128 \
+  --features 64 128 256 512 \
+  --epochs 100 \
+  --batch_size 2 \
+  --lr 1e-4 \
+  --weight_decay 5e-5 \
+  --output_dir ./runs/experiment_1 \
+  --seed 67
 ```
 
+---
 
+## Reproducibility
 
-\*\*4. Reproduce our exact split\*\*  
+The exact train, validation, and test split indices are stored in:
 
-The index files `train\_idx.npy`, `val\_idx.npy`, `test\_idx.npy` in `results/` contain the exact indices used. Pass `--seed 67` to reproduce the split from scratch.
+```text
+results/train_idx.npy
+results/val_idx.npy
+results/test_idx.npy
+```
 
+The training seed was fixed to **67**.
 
+---
 
-\---
+## Reference
 
-
-
-\## Reference
-
-
-
-Hernandez Petzsche MR, et al. \*ISLES 2022: A multi-center magnetic resonance imaging stroke lesion segmentation dataset.\* Scientific Data. 2022;9:762. https://doi.org/10.1038/s41597-022-01875-5
-
-
-
+Hernandez Petzsche MR, et al.
+**ISLES 2022: A multi-center magnetic resonance imaging stroke lesion segmentation dataset.**
+*Scientific Data.* 2022;9:762.
+https://doi.org/10.1038/s41597-022-01875-5
