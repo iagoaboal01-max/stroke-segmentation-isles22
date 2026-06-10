@@ -1,0 +1,12 @@
+{
+  "dice": 0.8084715604782104,
+  "voxel_precision": 0.8618491183866246,
+  "voxel_recall": 0.7613201171435008,
+  "lesion_precision": 0.9779411764705882,
+  "lesion_recall": 0.38328530259365995,
+  "mean_center_distance": 3.375744984947467,
+  "median_center_distance": 0.8022212513628859,
+  "roc_auc": 0.935587486411878,
+  "pr_auc": 0.8272129390365281,
+  "threshold": 0.5
+}

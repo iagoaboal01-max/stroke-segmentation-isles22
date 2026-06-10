@@ -1,0 +1,29 @@
+{
+  "base_path": "/data/upfaabi/u255385/ISLES-2022/",
+  "csv": "paths_isles_2022.csv",
+  "output_dir": "/data/upfaabi/u255385/runs/adamw_80x128x128_wd5e5_20260531_153900",
+  "modalities": [
+    "dwi_path",
+    "adc_path"
+  ],
+  "image_size": [
+    80,
+    128,
+    128
+  ],
+  "features": [
+    64,
+    128,
+    256,
+    512
+  ],
+  "epochs": 100,
+  "batch_size": 2,
+  "lr": 0.0001,
+  "weight_decay": 5e-05,
+  "num_workers": 8,
+  "threshold": 0.5,
+  "seed": 67,
+  "test_size": 0.15,
+  "val_size": 0.15
+}
